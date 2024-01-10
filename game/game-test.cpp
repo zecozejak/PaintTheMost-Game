@@ -1,6 +1,10 @@
 #include <SFML/Graphics.hpp>
 #include <vector>
 #include <sstream>
+#include <iostream>
+#include <iomanip>
+#include <time.h>
+using namespace std;
 
 const int gridSize = 10;  //rozmiar siatki
 const int windowWidth = 800;
@@ -60,7 +64,8 @@ int main() {
     //trail.setFillColor(sf::Color::Red);  
 
     //licznik czasu
-    //sf::Clock clock;
+    sf::Clock clock;
+    sf::Time initialTime = sf::seconds(90);
 
     //main petla
     while (window.isOpen()) {
@@ -70,6 +75,15 @@ int main() {
                 window.close();
             }
         }
+
+        //obliczanie pozostalego czasu
+        sf::Time elapsedTime = clock.getElapsedTime();
+        sf::Time remainingTime = initialTime - elapsedTime;
+
+
+        //wyswietlanie licznika w terminalu
+        std::cout << "\rPozostaly czas: " << std::setfill('0') << std::setw(2) << static_cast<int>(remainingTime.asSeconds()) / 60 << ":"
+            << std::setfill('0') << std::setw(2) << static_cast<int>(remainingTime.asSeconds()) % 60 << std::flush;
 
         //sterowanie 1
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) && player1.getPosition().x > gridX) {
@@ -179,7 +193,13 @@ int main() {
 
         //okno
         window.display();
+
+        //czy koniec czasu
+        if (remainingTime <= sf::Time::Zero) {
+            break;
+        }
     }
+    std::cout << "\nKONIEC CZASU!\n";
 
     return 0;
 }
