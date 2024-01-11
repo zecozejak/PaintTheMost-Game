@@ -89,12 +89,9 @@ int main() {
 
     //BOTH
     //siatka planszy
-    std::vector<std::vector<sf::Color> > visited(gridWidth / gridSize, std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
+    std::vector<std::vector<sf::Color>> visited(gridWidth / gridSize, std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
 
-    //BOTH
-    //licznik czasu
-    sf::Clock clock;
-    bool timeExpired = false;
+    
 
     //BOTH
     char ready; // 't'
@@ -108,7 +105,11 @@ int main() {
     //KLIENT
     //ZAMIAST READY TO JAKIES INFO OD SERWERA ZE GRA SIE ZACZELA
     if (ready == 't') {
-
+        //BOTH
+        //licznik czasu
+        sf::Clock clock;
+        bool timeExpired = false;
+        
         //KLIENT
         //main petla
         while (window.isOpen()) {
