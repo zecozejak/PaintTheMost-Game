@@ -89,7 +89,7 @@ int main() {
 
     //BOTH
     //siatka planszy
-    std::vector<std::vector<sf::Color>> visited(gridWidth / gridSize, std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
+    std::vector<std::vector<sf::Color> > visited(gridWidth / gridSize, std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
 
     //BOTH
     //licznik czasu
