@@ -22,7 +22,7 @@ const sf::Time roundTime = sf::seconds(90.0f); //czas gry
 //SERWER
 //ALE MUSI WYSYLAC DO KLIENTA ZAKTUALIZOWANY
 //liczenie procentowego zamalowania planszy przez dany kolor
-float calculatePercentage(const std::vector<std::vector<sf::Color>>& visited, const sf::Color& color) {
+float calculatePercentage(const std::vector<std::vector<sf::Color> >& visited, const sf::Color& color) {
     int totalGrids = 0;
     int coloredGrids = 0;
 
@@ -93,7 +93,6 @@ int main() {
 
     //BOTH
     //licznik czasu
-    sf::Clock clock;
     bool timeExpired = false;
 
     //BOTH
@@ -108,7 +107,7 @@ int main() {
     //KLIENT
     //ZAMIAST READY TO JAKIES INFO OD SERWERA ZE GRA SIE ZACZELA
     if (ready == 't') {
-
+        sf::Clock clock;
         //KLIENT
         //main petla
         while (window.isOpen()) {
