@@ -43,7 +43,8 @@ struct Coordinates {
 };
 
 std::unordered_map<int, PlayerInfo> playersInGameMap; //map which contains info about Players
-std::vector<std::vector<sf::Color> > visited(gridWidth / gridSize, std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
+std::vector<std::vector<sf::Color> > visited(gridWidth / gridSize,
+                                             std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
 std::vector<sf::Color> colors;
 std::vector<Coordinates> beginCords;
 
@@ -67,33 +68,35 @@ void communicationFunction(int serverSocket) {
             }
             auto *stateInfo = reinterpret_cast<PlayerInfo *>(movementBuf);
 
-//            if(stateInfo->x == Player.x && stateInfo->y == Player.y) {
-                // updating position of every player
-                if (stateInfo->x >= 0 && stateInfo->x < visited.size() && stateInfo->y >= 0 &&
-                    stateInfo->y < visited[0].size()) {
-                    Player.x = stateInfo->x;
-                    Player.y = stateInfo->y;
-                    visited[Player.x][Player.y] = Player.color;
-                }
+            if (stateInfo->x == Player.x && stateInfo->y == Player.y) {
+                continue;
+            }
+            std::cout << "jestem poza kontrolą" << std::endl;
+            // updating position of every player
+            if (stateInfo->x >= 0 && stateInfo->x < visited.size() && stateInfo->y >= 0 &&
+                stateInfo->y < visited[0].size()) {
+                Player.x = stateInfo->x;
+                Player.y = stateInfo->y;
+                visited[Player.x][Player.y] = Player.color;
+            }
 
-                for (const auto &player: playersInGameMap) {
-                    int playerSocket = player.first;
-                    char updateBuf[sizeof(PlayerInfo)];
-                    // to powoduje segfolta (chyba niepoprawnie wyslany struct?)
-                    PlayerInfo *updateInfo = reinterpret_cast<PlayerInfo *>(updateBuf);
-                    updateInfo->x = Player.x;
-                    updateInfo->y = Player.y;
-                    updateInfo->color = Player.color;
+            for (const auto &player: playersInGameMap) {
+                int playerSocket = player.first;
+                char updateBuf[12];
+                // to powoduje segfolta (chyba niepoprawnie wyslany struct?)
+                PlayerInfo *updateInfo = reinterpret_cast<PlayerInfo *>(updateBuf);
+                updateInfo->x = Player.x;
+                updateInfo->y = Player.y;
+                updateInfo->color = Player.color;
 
-                    //write(playerSocket, updateBuf, sizeof(PlayerInfo));
-                    //printf("%s", updateBuf);
-                }
-//            }
+                write(playerSocket, updateBuf, sizeof(PlayerInfo));
+                printf("%lu", sizeof(PlayerInfo));
+            }
         }
     }
 }
 
-float calculatePercentage(const std::vector<std::vector<sf::Color>>& visited, const sf::Color& color) {
+float calculatePercentage(const std::vector<std::vector<sf::Color>> &visited, const sf::Color &color) {
     int totalGrids = 0;
     int coloredGrids = 0;
 
@@ -109,17 +112,19 @@ float calculatePercentage(const std::vector<std::vector<sf::Color>>& visited, co
 }
 
 void gameLogicThread() {
-    while(activePlayerCount != 4);
-    while(readyCount != 4);
-    while(readyCount == 4) {
-        auto clock = new sf::Clock;
+    while (activePlayerCount != 4);
+    while (readyCount != 4);
 
-        // timer sending
-        sf::Int32 millisecondsToSend = roundTime.asMilliseconds();
-        for (const auto &player: playersInGameMap) {
-            int playerSocket = player.first;
-            write(playerSocket, &millisecondsToSend, sizeof(millisecondsToSend));
-        }
+    // timer sending
+    sf::Int32 millisecondsToSend = roundTime.asMilliseconds();
+    for (const auto &player: playersInGameMap) {
+        int playerSocket = player.first;
+        write(playerSocket, &millisecondsToSend, sizeof(millisecondsToSend));
+    }
+
+    while (readyCount == 4) {
+
+        auto clock = new sf::Clock;
 
         while (activePlayerCount == 4) {
             sf::Time elapsedTime = clock->getElapsedTime();
@@ -141,20 +146,20 @@ void gameLogicThread() {
         delete clock;
         std::cout << "\nKONIEC CZASU\n";
     }
-   // TODO: funkcja update otrzymująca 'x' i 'y' z kolejki wraz z numerem gracza, traktująca je jako współrzędne VISITED
+    // TODO: funkcja update otrzymująca 'x' i 'y' z kolejki wraz z numerem gracza, traktująca je jako współrzędne VISITED
 
 }
 
-void setReuseAddr(int sock){
+void setReuseAddr(int sock) {
     const int one = 1;
     int res = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
-    if(res){
+    if (res) {
         perror("setsockopt failed");
         printf("Error code: %d\n", errno);
     }
 }
 
-int main(int argc, char ** argv) {
+int main(int argc, char **argv) {
     colors.push_back(sf::Color::Red);
     colors.push_back(sf::Color::Blue);
     colors.push_back(sf::Color::Green);
@@ -181,13 +186,13 @@ int main(int argc, char ** argv) {
     serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
     serverAddr.sin_port = htons(8080);
 
-    int res = bind(serverSocket,(sockaddr*) &serverAddr, sizeof(serverAddr));
-    if(res){
+    int res = bind(serverSocket, (sockaddr *) &serverAddr, sizeof(serverAddr));
+    if (res) {
         perror("Bind failed.");
         printf("Error code: %d\n", errno);
     }
-    res = listen(serverSocket,10);
-    if (res){
+    res = listen(serverSocket, 10);
+    if (res) {
         perror("Error listening for connections.");
         printf("Error code: %d\n", errno);
         close(serverSocket);
@@ -197,8 +202,8 @@ int main(int argc, char ** argv) {
     std::thread communicationThread(communicationFunction, serverSocket);
     std::thread gameThread(gameLogicThread);
 
-    while(1) {
-        if(activePlayerCount != 4) {
+    while (1) {
+        if (activePlayerCount != 4) {
             int client = accept(serverSocket, nullptr, nullptr);
             fcntl(client, F_SETFL, O_NONBLOCK);
             std::cout << "New connection accepted" << std::endl;
@@ -206,9 +211,9 @@ int main(int argc, char ** argv) {
             // TODO: client disconnection == activePlayerCount -=1
             PlayerInfo newPlayer;
             // funkcja do iterowania przez graczy nadajaca im konkretny kolor i pozycje na mapie
-            newPlayer.x = beginCords[activePlayerCount-1].x; // vector starts with 0
-            newPlayer.y = beginCords[activePlayerCount-1].y; // vector starts with 0
-            newPlayer.color = colors[activePlayerCount-1];
+            newPlayer.x = beginCords[activePlayerCount - 1].x; // vector starts with 0
+            newPlayer.y = beginCords[activePlayerCount - 1].y; // vector starts with 0
+            newPlayer.color = colors[activePlayerCount - 1];
             playersInGameMap.insert({client, newPlayer});
             write(client, &newPlayer, sizeof(newPlayer));
         }
@@ -216,7 +221,7 @@ int main(int argc, char ** argv) {
 
 };
 
-void ctrl_c(){
+void ctrl_c() {
     // TODO: client closing on ctrl + c
 }
 

@@ -31,7 +31,8 @@ const int gridY = windowHeight / 4;
 bool start = false;
 bool timeExpired = true;
 
-std::vector<std::vector<sf::Color> > visited(gridWidth / gridSize, std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
+std::vector<std::vector<sf::Color> > visited(gridWidth / gridSize,
+                                             std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
 
 struct PlayerInfo {
     float x, y;  // Player position
@@ -43,11 +44,12 @@ struct ColorInfo {
     int g;
     int b;
 };
+
 // function to receive starting position
 PlayerInfo receivePosAndCol(int socketFD) {
     char beginningBuf[14];
     read(socketFD, &beginningBuf, 14);
-    return *reinterpret_cast<PlayerInfo*>(beginningBuf);
+    return *reinterpret_cast<PlayerInfo *>(beginningBuf);
 }
 
 // thread to receive all game states from the server
@@ -70,7 +72,7 @@ void receiveTimeState(int fd) {
     // TODO: read informacje o zwycięzcy
 }
 
-int receiveFirstTime(int fd){
+int receiveFirstTime(int fd) {
     sf::Int32 receivedMilliseconds;
     ssize_t receivedSize = read(fd, &receivedMilliseconds, sizeof(receivedMilliseconds));
     if (receivedSize == -1) {
@@ -79,13 +81,15 @@ int receiveFirstTime(int fd){
     timeExpired = false;
     return receivedMilliseconds;
 }
+
 // std::optional<PlayerInfo> readPlayerUpdate(int socketFD) {
 PlayerInfo readPlayerUpdate(int socketFD) {
     PlayerInfo updateInfo;
     ssize_t bytesRead = read(socketFD, &updateInfo, sizeof(updateInfo));
-    printf("\n%f\n", updateInfo.x);
-    printf("%f\n", updateInfo.y);
-    printf("%d", updateInfo.color.b);
+//    printf("\n%f\n", updateInfo.x);
+//    printf("%f\n", updateInfo.y);
+//    printf("%d", updateInfo.color.b);
+    std::cout << bytesRead << std::endl;
     if (bytesRead == -1) {
         perror("Error reading player update");
     }
@@ -106,7 +110,7 @@ void sendPlayerReadiness(int socketFD) {
     write(socketFD, &ready, 1);
 };
 
-int main(int argc, char ** argv){
+int main(int argc, char **argv) {
     sf::RenderWindow window(sf::VideoMode(windowWidth, windowHeight), "Paint the most game");
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -121,7 +125,7 @@ int main(int argc, char ** argv){
     serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
     serverAddr.sin_port = htons(8080);
 
-    if(connect(fd,(sockaddr*) &serverAddr, sizeof(serverAddr)) == -1) {
+    if (connect(fd, (sockaddr *) &serverAddr, sizeof(serverAddr)) == -1) {
         if (errno != EINPROGRESS) {
             perror("Connection failed");
             printf("Error code: %d\n", errno);
@@ -200,7 +204,8 @@ int main(int argc, char ** argv){
             // sending position to server
             float valueX = (player1.getPosition().x - gridX) / gridSize;
             float valueY = (player1.getPosition().y - gridY) / gridSize;
-            sendPlayerMovement(fd, valueX,valueY);// to chyba powinno dzialac (nieprzetestowane bo nie potrafie zrobic zeby serwer wyslal dobre informacje do clienta zeby ten pomalowal sobie vector mapygry
+            sendPlayerMovement(fd, valueX,
+                               valueY);// to chyba powinno dzialac (nieprzetestowane bo nie potrafie zrobic zeby serwer wyslal dobre informacje do clienta zeby ten pomalowal sobie vector mapygry
             std::cout << "jebac mnie serio" << std::endl;
 //            if(firstSendImportant == 0){
 //                float valueX = (player1.getPosition().x - gridX) / gridSize;
@@ -209,7 +214,7 @@ int main(int argc, char ** argv){
 //                firstSendImportant = 1;
 //            }
             PlayerInfo updatePlayer = readPlayerUpdate(fd);
-            visited[(updatePlayer.x)][(updatePlayer.y)] = sf::Color::Cyan;
+            visited[(updatePlayer.x)][(updatePlayer.y)] = updatePlayer.color;
 
 //            std::optional<PlayerInfo> updatePlayer = readPlayerUpdate(fd);// to rozpierdala gierke razem z czescia na serwerze
 //            if(updatePlayer.has_value()) {
