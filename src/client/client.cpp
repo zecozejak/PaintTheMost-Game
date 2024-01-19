@@ -52,43 +52,53 @@ PlayerInfo receivePosAndCol(int socketFD) {
     return *reinterpret_cast<PlayerInfo *>(beginningBuf);
 }
 
-// thread to receive all game states from the server
-void receiveTimeState(int fd) {
-    // TODO: loop z updatem tablicy
-//    while(1) {
-//        sf::Int32 receivedMilliseconds;
-//        ssize_t receivedSize = read(fd, &receivedMilliseconds, sizeof(receivedMilliseconds));
-//        if (receivedSize == -1) {
-//            std::cerr << "Error receiving data" << std::endl;
-//        } else {
-//            timeExpired = false;
-//            sf::Time receivedTime = sf::milliseconds(receivedMilliseconds);
-//            float seconds = std::round(receivedTime.asSeconds());
-//
-//            std::cout << "\rPozostaly czas: " << std::setfill('0') << std::setw(2) << static_cast<int>(seconds) / 60 << ":"
-//                      << std::setfill('0') << std::setw(2) << static_cast<int>(seconds) % 60 << "  " << std::flush;
-//        }
-//    }
-    // TODO: read informacje o zwycięzcy
-}
-
 int receiveFirstTime(int fd) {
     sf::Int32 receivedMilliseconds;
-    ssize_t receivedSize = read(fd, &receivedMilliseconds, sizeof(receivedMilliseconds));
-    if (receivedSize == -1) {
-        std::cerr << "Error receiving data" << std::endl;
+    ssize_t bytesRead =
+            read(fd, &receivedMilliseconds, sizeof(receivedMilliseconds));
+    if (bytesRead == -1) {
+        throw std::runtime_error("halo kurwa xd?");
     }
+
+    while (bytesRead < 4) {
+        std::cout << "Zapierdalam tam gdzie powinienem" << std::endl;
+        ssize_t additionalRead = read(fd, &receivedMilliseconds + bytesRead,
+                                      sizeof(receivedMilliseconds));
+        if (additionalRead <= 0) {
+            if (errno == EWOULDBLOCK)
+                continue;
+            throw std::runtime_error("halo kurwa xd?");
+        }
+
+        bytesRead += additionalRead;
+    }
+
     timeExpired = false;
-    return receivedMilliseconds;
+    return int(receivedMilliseconds);
 }
 
 // std::optional<PlayerInfo> readPlayerUpdate(int socketFD) {
 PlayerInfo readPlayerUpdate(int socketFD) {
     PlayerInfo updateInfo;
     ssize_t bytesRead = read(socketFD, &updateInfo, sizeof(updateInfo));
-//    printf("\n%f\n", updateInfo.x);
-//    printf("%f\n", updateInfo.y);
-//    printf("%d", updateInfo.color.b);
+    while (bytesRead < 12) {
+        ssize_t additionalRead =
+                read(socketFD, &updateInfo + bytesRead, sizeof(updateInfo));
+        if (additionalRead <= 0) {
+            if (errno == EWOULDBLOCK)
+                continue;
+            throw std::runtime_error("halo kurwa xd?");
+        }
+
+        bytesRead += additionalRead;
+    }
+    if (bytesRead > 12) {
+        throw std::runtime_error("wincyj wincyj");
+    }
+    //    printf("\n%f\n", updateInfo.x);
+    //    printf("%f\n", updateInfo.y);
+    //    printf("%d", updateInfo.color.b);
+    std::cout << sizeof(updateInfo) << std::endl;
     std::cout << bytesRead << std::endl;
     if (bytesRead == -1) {
         perror("Error reading player update");
@@ -136,9 +146,9 @@ int main(int argc, char **argv) {
 
     std::cout << "Connected to the server." << std::endl;
 
-    //fcntl(fd, F_SETFL, O_NONBLOCK); insta segfault
-
-    PlayerInfo firstInfo = receivePosAndCol(fd);
+    int status = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    std::cout << "Connected to the server." << std::endl;
+    PlayerInfo firstInfo = readPlayerUpdate(fd);
 
     sf::RectangleShape player1(sf::Vector2f(squareSize, squareSize));
     sf::Color player1Color = firstInfo.color;
