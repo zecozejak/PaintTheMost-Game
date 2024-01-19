@@ -32,10 +32,12 @@ int readyCount = 0;
 const int gridX = windowWidth / 4;
 const int gridY = windowHeight / 4;
 
+#pragma pack(push, 1) // Set packing to 1 byte
 struct PlayerInfo {
     float x, y;  // Player position
-    sf::Color color;
+    int intColor;
 };
+#pragma pack(pop) // Restore default packing
 
 struct Coordinates {
     float x;
@@ -77,17 +79,16 @@ void communicationFunction(int serverSocket) {
                 stateInfo->y < visited[0].size()) {
                 Player.x = stateInfo->x;
                 Player.y = stateInfo->y;
-                visited[Player.x][Player.y] = Player.color;
+                visited[Player.x][Player.y] = colors[Player.intColor];
             }
 
             for (const auto &player: playersInGameMap) {
                 int playerSocket = player.first;
                 char updateBuf[12];
-                // to powoduje segfolta (chyba niepoprawnie wyslany struct?)
-                PlayerInfo *updateInfo = reinterpret_cast<PlayerInfo *>(updateBuf);
+                auto *updateInfo = reinterpret_cast<PlayerInfo *>(updateBuf);
                 updateInfo->x = Player.x;
                 updateInfo->y = Player.y;
-                updateInfo->color = Player.color;
+                updateInfo->intColor = Player.intColor;
 
                 write(playerSocket, updateBuf, sizeof(PlayerInfo));
                 printf("%lu", sizeof(PlayerInfo));
@@ -114,12 +115,17 @@ float calculatePercentage(const std::vector<std::vector<sf::Color>> &visited, co
 void gameLogicThread() {
     while (activePlayerCount != 4);
     while (readyCount != 4);
-
-    // timer sending
-    sf::Int32 millisecondsToSend = roundTime.asMilliseconds();
-    for (const auto &player: playersInGameMap) {
-        int playerSocket = player.first;
-        write(playerSocket, &millisecondsToSend, sizeof(millisecondsToSend));
+    if (activePlayerCount == 4 && readyCount == 4) {
+        bool pleaseStart = true;
+        // timer sending
+        //sf::Int32 millisecondsToSend = roundTime.asMilliseconds();
+        for (const auto &player: playersInGameMap) {
+            int playerSocket = player.first;
+//            std::cout << "show me how big are you" << millisecondsToSend << std::endl;
+//            write(playerSocket, &millisecondsToSend, sizeof(millisecondsToSend));
+            write(playerSocket, &pleaseStart, sizeof(pleaseStart));
+            std::cout << pleaseStart << std::endl;
+        }
     }
 
     while (readyCount == 4) {
@@ -213,8 +219,9 @@ int main(int argc, char **argv) {
             // funkcja do iterowania przez graczy nadajaca im konkretny kolor i pozycje na mapie
             newPlayer.x = beginCords[activePlayerCount - 1].x; // vector starts with 0
             newPlayer.y = beginCords[activePlayerCount - 1].y; // vector starts with 0
-            newPlayer.color = colors[activePlayerCount - 1];
+            newPlayer.intColor = activePlayerCount - 1;
             playersInGameMap.insert({client, newPlayer});
+            std::cout << "Size of MyStruct: " << sizeof(newPlayer) << " bytes" << std::endl;
             write(client, &newPlayer, sizeof(newPlayer));
         }
     }

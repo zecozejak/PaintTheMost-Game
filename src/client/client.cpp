@@ -21,6 +21,7 @@ const float squareSize = 10.0f;
 const float outlineThickness = 1.0f;
 sf::Time remainingTime; // czas od serwera
 char ready;
+const sf::Time roundTime = sf::seconds(90.0f); //czas gry
 
 //ustawienia biala plansza co bedzie zamalowywana
 const int gridWidth = windowWidth / 2;
@@ -28,15 +29,16 @@ const int gridHeight = windowHeight / 2;
 //pozycja planszy
 const int gridX = windowWidth / 4;
 const int gridY = windowHeight / 4;
-bool start = false;
+bool pleaseStart = false;
 bool timeExpired = true;
 
 std::vector<std::vector<sf::Color> > visited(gridWidth / gridSize,
                                              std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
+std::vector<sf::Color> colors;
 
 struct PlayerInfo {
     float x, y;  // Player position
-    sf::Color color;
+    int intColor;
 };
 
 struct ColorInfo {
@@ -45,29 +47,24 @@ struct ColorInfo {
     int b;
 };
 
-// function to receive starting position
-PlayerInfo receivePosAndCol(int socketFD) {
-    char beginningBuf[14];
-    read(socketFD, &beginningBuf, 14);
-    return *reinterpret_cast<PlayerInfo *>(beginningBuf);
-}
 
 int receiveFirstTime(int fd) {
     sf::Int32 receivedMilliseconds;
     ssize_t bytesRead =
             read(fd, &receivedMilliseconds, sizeof(receivedMilliseconds));
+    std::cout << bytesRead << std::endl;
     if (bytesRead == -1) {
-        throw std::runtime_error("halo kurwa xd?");
+        throw std::runtime_error("halo czy mnie slychac?");
     }
 
     while (bytesRead < 4) {
-        std::cout << "Zapierdalam tam gdzie powinienem" << std::endl;
+        std::cout << "dotarłem tam gdzie powinienem" << std::endl;
         ssize_t additionalRead = read(fd, &receivedMilliseconds + bytesRead,
                                       sizeof(receivedMilliseconds));
         if (additionalRead <= 0) {
             if (errno == EWOULDBLOCK)
                 continue;
-            throw std::runtime_error("halo kurwa xd?");
+            throw std::runtime_error("no i mamy problem");
         }
 
         bytesRead += additionalRead;
@@ -79,7 +76,7 @@ int receiveFirstTime(int fd) {
 
 // std::optional<PlayerInfo> readPlayerUpdate(int socketFD) {
 PlayerInfo readPlayerUpdate(int socketFD) {
-    PlayerInfo updateInfo;
+    PlayerInfo updateInfo{};
     ssize_t bytesRead = read(socketFD, &updateInfo, sizeof(updateInfo));
     while (bytesRead < 12) {
         ssize_t additionalRead =
@@ -87,14 +84,14 @@ PlayerInfo readPlayerUpdate(int socketFD) {
         if (additionalRead <= 0) {
             if (errno == EWOULDBLOCK)
                 continue;
-            throw std::runtime_error("halo kurwa xd?");
+            throw std::runtime_error("halo");
         }
 
         bytesRead += additionalRead;
     }
-    if (bytesRead > 12) {
-        throw std::runtime_error("wincyj wincyj");
-    }
+//    if (bytesRead > 12) {
+//        throw std::runtime_error("za duzo");
+//    }
     //    printf("\n%f\n", updateInfo.x);
     //    printf("%f\n", updateInfo.y);
     //    printf("%d", updateInfo.color.b);
@@ -123,6 +120,11 @@ void sendPlayerReadiness(int socketFD) {
 int main(int argc, char **argv) {
     sf::RenderWindow window(sf::VideoMode(windowWidth, windowHeight), "Paint the most game");
 
+    colors.push_back(sf::Color::Red);
+    colors.push_back(sf::Color::Blue);
+    colors.push_back(sf::Color::Green);
+    colors.push_back(sf::Color::Yellow);
+
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == -1) {
         perror("Failed creating a socket");
@@ -150,19 +152,30 @@ int main(int argc, char **argv) {
     std::cout << "Connected to the server." << std::endl;
     PlayerInfo firstInfo = readPlayerUpdate(fd);
 
+
     sf::RectangleShape player1(sf::Vector2f(squareSize, squareSize));
-    sf::Color player1Color = firstInfo.color;
+    sf::Color player1Color = colors[firstInfo.intColor];
     player1.setFillColor(player1Color);
     player1.setOutlineColor(sf::Color::Black);
     player1.setOutlineThickness(outlineThickness);
     player1.setPosition(firstInfo.x, firstInfo.y);
 
+    std::cout << "dochodzenie prowadzone" << std::endl;
+
     sendPlayerReadiness(fd);
-    sf::Time receivedTime = sf::milliseconds(receiveFirstTime(fd));
+    std::cout << "probujemy dalej" << std::endl;
+
+    sf::Time receivedTime = roundTime; //sf::milliseconds(receiveFirstTime(fd));
     timeExpired = false;
-
+    std::cout << "czy my tu w ogole dochodzimy?" << std::endl;
     //std::thread receiveThread(receiveTimeState, fd);
+    char rBuff[1];
+    ssize_t bytesrRead = read(fd, rBuff, sizeof(rBuff));
+    while (!pleaseStart) {
+        sleep(1);
+        std::cout << "czekam" << std::endl;
 
+    }
     // Who let the clock out?
     sf::Clock clock;
     int firstSendImportant = 0;
@@ -224,7 +237,7 @@ int main(int argc, char **argv) {
 //                firstSendImportant = 1;
 //            }
             PlayerInfo updatePlayer = readPlayerUpdate(fd);
-            visited[(updatePlayer.x)][(updatePlayer.y)] = updatePlayer.color;
+            visited[(updatePlayer.x)][(updatePlayer.y)] = colors[updatePlayer.intColor];
 
 //            std::optional<PlayerInfo> updatePlayer = readPlayerUpdate(fd);// to rozpierdala gierke razem z czescia na serwerze
 //            if(updatePlayer.has_value()) {
@@ -248,7 +261,5 @@ int main(int argc, char **argv) {
     }
 
     close(fd);
-    //receiveThread.join();  // Wait for the receive thread to finish
-
     return 0;
 }
