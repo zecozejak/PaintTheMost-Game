@@ -197,22 +197,24 @@ int main(int argc, char **argv) {
 
             // movement keys
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) &&
-                player1.getPosition().x > gridX) {
+                player1.getPosition().x > gridX && window.hasFocus()) {
                 player1.move(-1.0f, 0.0f);
                 shouldMove = true;
             }
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right) &&
-                player1.getPosition().x < gridX + gridWidth - player1.getSize().x) {
+                player1.getPosition().x < gridX + gridWidth - player1.getSize().x &&
+                window.hasFocus()) {
                 player1.move(1.0f, 0.0f);
                 shouldMove = true;
             }
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up) &&
-                player1.getPosition().y > gridY) {
+                player1.getPosition().y > gridY && window.hasFocus()) {
                 player1.move(0.0f, -1.0f);
                 shouldMove = true;
             }
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down) &&
-                player1.getPosition().y < gridY + gridHeight - player1.getSize().y) {
+                player1.getPosition().y < gridY + gridHeight - player1.getSize().y &&
+                window.hasFocus()) {
                 player1.move(0.0f, 1.0f);
                 shouldMove = true;
             }
