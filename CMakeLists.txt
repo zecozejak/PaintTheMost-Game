@@ -5,8 +5,9 @@ set(CMAKE_CXX_STANDARD 17)
 
 include_directories(src/client)
 include_directories(src/server)
-add_executable(PaintTheMost_Server src/server/server.cpp)
-add_executable(PaintTheMost_Client src/client/client.cpp)
+include_directories(src/shared)
+add_executable(PaintTheMost_Server src/shared/communication.cpp src/server/server.cpp src/shared/communication.h)
+add_executable(PaintTheMost_Client src/shared/communication.cpp src/client/client.cpp src/shared/communication.h)
 include_directories(/usr/local/include)
 
 find_package(SFML 2.5 COMPONENTS system window graphics network audio REQUIRED)

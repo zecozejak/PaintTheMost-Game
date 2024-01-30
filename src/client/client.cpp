@@ -13,6 +13,7 @@
 #include <time.h>
 #include <iomanip>
 #include <sys/fcntl.h>
+#include "../shared/communication.h"
 
 const int gridSize = 10;  //rozmiar siatki
 const int windowWidth = 800;
@@ -76,29 +77,15 @@ struct ColorInfo {
 //    return int(receivedMilliseconds);
 //}
 
-// std::optional<PlayerInfo> readPlayerUpdate(int socketFD) {
-PlayerInfo readPlayerUpdate(int socketFD) {
+ std::optional<PlayerInfo> readPlayerUpdate(int socketFD) {
+
+    char bytesSend[12]{};
+    ssize_t bytesRead = receive(socketFD, bytesSend);
+    if (bytesRead == 0) return std::nullopt;
     PlayerInfo updateInfo{};
-    ssize_t bytesRead = read(socketFD, &updateInfo, sizeof(updateInfo));
-    if (bytesRead == -1){
-        if (errno == EWOULDBLOCK) {
-            bytesRead = 0;
-        } else {
-            throw std::runtime_error("MAMY KURWA PROBLEM");
-        }
-    }
-    while (bytesRead < 12) {
-        ssize_t additionalRead =
-                read(socketFD, &updateInfo + bytesRead, sizeof(updateInfo));
-        if (additionalRead <= 0) {
-            if (errno == EWOULDBLOCK)
-                continue;
-            throw std::runtime_error("halo");
-        }
-
-        bytesRead += additionalRead;
-    }
-
+    memcpy(&updateInfo.x, bytesSend, sizeof(float));
+    memcpy(&updateInfo.y, bytesSend + sizeof(float), sizeof(float));
+    memcpy(&updateInfo.intColor, bytesSend + 2 * sizeof(float), sizeof(int));
     std::cout << sizeof(updateInfo) << std::endl;
     std::cout << bytesRead << std::endl;
 
@@ -156,15 +143,19 @@ int main(int argc, char **argv) {
     }
 
     std::cout << "Connected to the server." << std::endl;
-    PlayerInfo firstInfo = readPlayerUpdate(fd);
+    std::optional<PlayerInfo> firstInfo{};
 
+    while (true) {
+        firstInfo = readPlayerUpdate(fd);
+        if (firstInfo.has_value()) break;
+    }
 
     sf::RectangleShape player1(sf::Vector2f(squareSize, squareSize));
-    sf::Color player1Color = colors[firstInfo.intColor];
+    sf::Color player1Color = colors[firstInfo->intColor];
     player1.setFillColor(player1Color);
     player1.setOutlineColor(sf::Color::Black);
     player1.setOutlineThickness(outlineThickness);
-    player1.setPosition(firstInfo.x, firstInfo.y);
+    player1.setPosition(firstInfo->x, firstInfo->y);
 
     std::cout << "dochodzenie prowadzone" << std::endl;
 
@@ -251,17 +242,11 @@ int main(int argc, char **argv) {
 //                sendPlayerMovement(fd, valueX,valueY);
 //                firstSendImportant = 1;
 //            }
-            std::cout << "przed updatem" << std::endl;
-            PlayerInfo updatePlayer = readPlayerUpdate(fd);
-            std::cout << "w trakcie updateu" << std::endl;
-            visited[(updatePlayer.x)][(updatePlayer.y)] = colors[updatePlayer.intColor];
-            std::cout << "po update" << std::endl;
 
-
-//            std::optional<PlayerInfo> updatePlayer = readPlayerUpdate(fd);// to rozpierdala gierke razem z czescia na serwerze
-//            if(updatePlayer.has_value()) {
-//                visited[std::floor(updatePlayer.value().x)][std::floor(updatePlayer.value().y)] = updatePlayer.value().color;
-//            }
+            std::optional<PlayerInfo> updatePlayer = readPlayerUpdate(fd);// to rozpierdala gierke razem z czescia na serwerze
+            if(updatePlayer.has_value()) {
+                visited[std::floor(updatePlayer.value().x)][std::floor(updatePlayer.value().y)] = colors[updatePlayer.value().intColor];
+            }
         }
         window.clear();
 

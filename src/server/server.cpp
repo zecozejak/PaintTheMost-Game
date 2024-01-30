@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <time.h>
 #include <condition_variable>
+#include "../shared/communication.h"
 
 const sf::Time roundTime = sf::seconds(90.0f); //czas gry
 
@@ -87,8 +88,7 @@ void communicationFunction(int serverSocket) {
                 updateInfo->y = Player.y;
                 updateInfo->intColor = Player.intColor;
 
-                write(playerSocket, updateBuf, sizeof(PlayerInfo));
-                printf("%lu", sizeof(PlayerInfo));
+                sendWithLength(playerSocket, updateBuf, 12);
             }
         }
     }
@@ -117,7 +117,7 @@ void gameLogicThread() {
     for (const auto &player: playersInGameMap) {
         int playerSocket = player.first;
 //          std::cout << "show me how big are you" << millisecondsToSend << std::endl;
-            write(playerSocket, &ready, 1);
+            sendWithLength(playerSocket, &ready, 1);
             std::cout << ready << std::endl;
     }
 
@@ -224,23 +224,9 @@ int main(int argc, char **argv) {
         newPlayer.intColor = activePlayerCount - 1;
         playersInGameMap.insert({client, newPlayer});
         std::cout << "Size of MyStruct: " << sizeof(newPlayer) << " bytes" << std::endl;
-        ssize_t bytesSend = write(client, &newPlayer, sizeof(newPlayer));
-        if ( bytesSend == -1){
-            if (errno == EWOULDBLOCK) {
-                bytesSend = 0;
-            } else {
-                throw std::runtime_error("Błąd w 1 kroku wysyłania informacji o nowym graczu");
-            }
-        }
-        while (bytesSend < 12) {
-            ssize_t additionalSend =
-                    write(serverSocket, &newPlayer + bytesSend, sizeof(newPlayer) - bytesSend);
-            if (additionalSend <= 0) {
-                if (errno == EWOULDBLOCK)
-                    continue;
-                throw std::runtime_error("błąd przy wysyłaniu informacji o nowym graczu");
-            }
-        }
+        char bytesSend[12];
+        memcpy(bytesSend, &newPlayer, 12);
+        sendWithLength(client, bytesSend, sizeof(bytesSend));
 
         if (activePlayerCount == 4) {
             // taking care of all "t" from clients
