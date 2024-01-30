@@ -1,87 +1,58 @@
-#include <iostream>
-#include <vector>
-#include <map>
-#include <cstring>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <errno.h>
-#include <arpa/inet.h>
+#include "../shared/communication.h"
 #include <SFML/Graphics.hpp>
+#include <arpa/inet.h>
+#include <cmath>
+#include <cstring>
+#include <errno.h>
+#include <iomanip>
+#include <iostream>
+#include <map>
+#include <netinet/in.h>
+#include <optional>
+#include <stdio.h>
+#include <sys/fcntl.h>
+#include <sys/socket.h>
 #include <thread>
 #include <time.h>
-#include <iomanip>
-#include <sys/fcntl.h>
-#include "../shared/communication.h"
+#include <unistd.h>
+#include <vector>
 
-const int gridSize = 10;  //rozmiar siatki
+const int gridSize = 10; // rozmiar siatki
 const int windowWidth = 800;
 const int windowHeight = 600;
 const float squareSize = 10.0f;
 const float outlineThickness = 1.0f;
 sf::Time remainingTime; // czas od serwera
 char ready;
-const sf::Time roundTime = sf::seconds(90.0f); //czas gry
+const sf::Time roundTime = sf::seconds(90.0f); // czas gry
 
-//ustawienia biala plansza co bedzie zamalowywana
+// ustawienia biala plansza co bedzie zamalowywana
 const int gridWidth = windowWidth / 2;
 const int gridHeight = windowHeight / 2;
-//pozycja planszy
+// pozycja planszy
 const int gridX = windowWidth / 4;
 const int gridY = windowHeight / 4;
 bool pleaseStart = false;
 bool timeExpired = true;
 
-std::vector<std::vector<sf::Color> > visited(gridWidth / gridSize,
-                                             std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
+std::vector<std::vector<sf::Color>>
+        visited(gridWidth / gridSize,
+                std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
 std::vector<sf::Color> colors;
 
 #pragma pack(push, 1) // Set packing to 1 byte
 struct PlayerInfo {
-    float x, y;  // Player position
+    float x, y; // Player position
     int intColor;
 };
 #pragma pack(pop) // Restore default packing
 
-struct ColorInfo {
-    int r;
-    int g;
-    int b;
-};
-
-
-//int receiveFirstTime(int fd) {
-//    sf::Int32 receivedMilliseconds;
-//    ssize_t bytesRead =
-//            read(fd, &receivedMilliseconds, sizeof(receivedMilliseconds));
-//    std::cout << bytesRead << std::endl;
-//    if (bytesRead == -1) {
-//        throw std::runtime_error("halo czy mnie slychac?");
-//    }
-//
-//    while (bytesRead < 4) {
-//        std::cout << "dotarłem tam gdzie powinienem" << std::endl;
-//        ssize_t additionalRead = read(fd, &receivedMilliseconds + bytesRead,
-//                                      sizeof(receivedMilliseconds));
-//        if (additionalRead <= 0) {
-//            if (errno == EWOULDBLOCK)
-//                continue;
-//            throw std::runtime_error("no i mamy problem");
-//        }
-//
-//        bytesRead += additionalRead;
-//    }
-//
-//    timeExpired = false;
-//    return int(receivedMilliseconds);
-//}
-
- std::optional<PlayerInfo> readPlayerUpdate(int socketFD) {
+std::optional<PlayerInfo> readPlayerUpdate(int socketFD) {
 
     char bytesSend[12]{};
     ssize_t bytesRead = receive(socketFD, bytesSend);
-    if (bytesRead == 0) return std::nullopt;
+    if (bytesRead == 0)
+        return std::nullopt;
     PlayerInfo updateInfo{};
     memcpy(&updateInfo.x, bytesSend, sizeof(float));
     memcpy(&updateInfo.y, bytesSend + sizeof(float), sizeof(float));
@@ -92,21 +63,26 @@ struct ColorInfo {
     return updateInfo;
 }
 
-//simple function to send player current position to the server
+// simple function to send player current position to the server
 void sendPlayerMovement(int socketFD, float x, float y) {
-    PlayerInfo info = {x, y};
-    write(socketFD, &info, 8);
+    PlayerInfo info = {x, y, 0};
+    char toSend[12];
+    memcpy(toSend, &info.x, sizeof(float));
+    memcpy(toSend + sizeof(float), &info.y, sizeof(float));
+    memcpy(toSend + 2 * sizeof(float), &info.intColor, sizeof(int));
+    sendWithLength(socketFD, toSend, 12);
 }
 
-//function to sent readiness to server
+// function to sent readiness to server
 void sendPlayerReadiness(int socketFD) {
     std::cout << "Czy jestes gotowy? [t] ";
     std::cin >> ready;
-    write(socketFD, &ready, 1);
+    sendWithLength(socketFD, &ready, 1);
 };
 
 int main(int argc, char **argv) {
-    sf::RenderWindow window(sf::VideoMode(windowWidth, windowHeight), "Paint the most game");
+    sf::RenderWindow window(sf::VideoMode(windowWidth, windowHeight),
+                            "Paint the most game");
 
     colors.push_back(sf::Color::Red);
     colors.push_back(sf::Color::Blue);
@@ -120,12 +96,12 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    struct sockaddr_in serverAddr{};
+    struct sockaddr_in serverAddr {};
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
     serverAddr.sin_port = htons(8080);
 
-    if (connect(fd, (sockaddr *) &serverAddr, sizeof(serverAddr)) == -1) {
+    if (connect(fd, (sockaddr *)&serverAddr, sizeof(serverAddr)) == -1) {
         if (errno != EINPROGRESS) {
             perror("Connection failed");
             printf("Error code: %d\n", errno);
@@ -138,7 +114,7 @@ int main(int argc, char **argv) {
 
     int status = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     if (status == -1) {
-        shutdown(fd,SHUT_RDWR);
+        shutdown(fd, SHUT_RDWR);
         close(fd);
     }
 
@@ -147,7 +123,8 @@ int main(int argc, char **argv) {
 
     while (true) {
         firstInfo = readPlayerUpdate(fd);
-        if (firstInfo.has_value()) break;
+        if (firstInfo.has_value())
+            break;
     }
 
     sf::RectangleShape player1(sf::Vector2f(squareSize, squareSize));
@@ -157,23 +134,19 @@ int main(int argc, char **argv) {
     player1.setOutlineThickness(outlineThickness);
     player1.setPosition(firstInfo->x, firstInfo->y);
 
-    std::cout << "dochodzenie prowadzone" << std::endl;
-
     sendPlayerReadiness(fd);
-    std::cout << "probujemy dalej" << std::endl;
-
-    sf::Time receivedTime = roundTime; //sf::milliseconds(receiveFirstTime(fd));
+    sf::Time receivedTime = roundTime; // sf::milliseconds(receiveFirstTime(fd));
     timeExpired = false;
     std::cout << "czy my tu w ogole dochodzimy?" << std::endl;
-    //std::thread receiveThread(receiveTimeState, fd);
     char rBuff;
     while (!pleaseStart) {
         sleep(1);
         std::cout << "czekam" << std::endl;
-        if(read(fd, &rBuff, 1) == -1) {
+        if (read(fd, &rBuff, 1) == -1) {
             if (errno == EWOULDBLOCK)
                 continue;
-            throw std::runtime_error("mamy problem w prosze startowac panie kapitanie");
+            throw std::runtime_error(
+                    "mamy problem w prosze startowac panie kapitanie");
         }
         if (rBuff == 0xf) {
             pleaseStart = true;
@@ -182,7 +155,6 @@ int main(int argc, char **argv) {
     }
     // Who let the clock out?
     sf::Clock clock;
-    int firstSendImportant = 0;
 
     while (window.isOpen()) {
         sf::Event event;
@@ -197,19 +169,20 @@ int main(int argc, char **argv) {
             bool shouldMove = false;
 
             sf::Time elapsedTime = clock.getElapsedTime();
-            // time start -> sending information to all currently playing clients about time
             remainingTime = receivedTime - elapsedTime;
             if (remainingTime <= sf::Time::Zero) {
                 timeExpired = true;
-                remainingTime = sf::Time::Zero;  //unikanie wartosci ujemnych
+                remainingTime = sf::Time::Zero; // unikanie wartosci ujemnych
             }
             std::cout << "\rPozostaly czas: " << std::setfill('0') << std::setw(2)
                       << static_cast<int>(remainingTime.asSeconds()) / 60 << ":"
-                      << std::setfill('0') << std::setw(2) << static_cast<int>(remainingTime.asSeconds()) % 60
+                      << std::setfill('0') << std::setw(2)
+                      << static_cast<int>(remainingTime.asSeconds()) % 60
                       << std::flush;
 
             // movement keys
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) && player1.getPosition().x > gridX) {
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) &&
+                player1.getPosition().x > gridX) {
                 player1.move(-1.0f, 0.0f);
                 shouldMove = true;
             }
@@ -218,7 +191,8 @@ int main(int argc, char **argv) {
                 player1.move(1.0f, 0.0f);
                 shouldMove = true;
             }
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up) && player1.getPosition().y > gridY) {
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up) &&
+                player1.getPosition().y > gridY) {
                 player1.move(0.0f, -1.0f);
                 shouldMove = true;
             }
@@ -232,20 +206,23 @@ int main(int argc, char **argv) {
             if (shouldMove) {
                 float valueX = (player1.getPosition().x - gridX) / gridSize;
                 float valueY = (player1.getPosition().y - gridY) / gridSize;
-                sendPlayerMovement(fd, valueX,
-                                   valueY);// to chyba powinno dzialac (nieprzetestowane bo nie potrafie zrobic zeby serwer wyslal dobre informacje do clienta zeby ten pomalowal sobie vector mapygry
-                std::cout << "jebac mnie serio" << std::endl;
+                sendPlayerMovement(
+                        fd, valueX,
+                        valueY);
             }
-//            if(firstSendImportant == 0){
-//                float valueX = (player1.getPosition().x - gridX) / gridSize;
-//                float valueY = (player1.getPosition().y - gridY) / gridSize;
-//                sendPlayerMovement(fd, valueX,valueY);
-//                firstSendImportant = 1;
-//            }
 
-            std::optional<PlayerInfo> updatePlayer = readPlayerUpdate(fd);// to rozpierdala gierke razem z czescia na serwerze
-            if(updatePlayer.has_value()) {
-                visited[std::floor(updatePlayer.value().x)][std::floor(updatePlayer.value().y)] = colors[updatePlayer.value().intColor];
+            std::optional<PlayerInfo> updatePlayer = readPlayerUpdate(
+                    fd);
+            if (updatePlayer.has_value()) {
+                std::cout << "pronting" << std::endl;
+                std::cout << updatePlayer->x << std::endl;
+                std::cout << updatePlayer->y << std::endl;
+                std::cout << updatePlayer->intColor << std::endl;
+                std::cout << "Ended pronting" << std::endl;
+                std::cout << "Visited is of size: " << visited.size() << " and "
+                          << visited[0].size() << std::endl;
+                visited[std::floor(updatePlayer->x)][std::floor(updatePlayer->y)] =
+                        colors[updatePlayer->intColor];
             }
         }
         window.clear();
