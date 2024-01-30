@@ -1,20 +1,18 @@
 #include <iostream>
 #include <vector>
 #include <unordered_map>
-#include <cstring>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <errno.h>
-#include <arpa/inet.h>
 #include <thread>
-#include <queue>
 #include <mutex>
 #include <sys/fcntl.h>
 #include <SFML/Graphics.hpp>
 #include <iomanip>
 #include <time.h>
+#include <condition_variable>
 
 const sf::Time roundTime = sf::seconds(90.0f); //czas gry
 
@@ -44,6 +42,11 @@ struct Coordinates {
     float y;
 };
 
+std::condition_variable cvGameLogic;
+std::condition_variable cvGameLogic2;
+std::mutex mtx2;
+std::mutex mtx3;
+
 std::unordered_map<int, PlayerInfo> playersInGameMap; //map which contains info about Players
 std::vector<std::vector<sf::Color> > visited(gridWidth / gridSize,
                                              std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
@@ -51,18 +54,12 @@ std::vector<sf::Color> colors;
 std::vector<Coordinates> beginCords;
 
 void communicationFunction(int serverSocket) {
+    std::unique_lock<std::mutex> lock(mtx2);
+    cvGameLogic.wait(lock, [] {return activePlayerCount == 4 && readyCount == 4; });
+
     std::vector<int> toDisconnect;
     char movementBuf[8];
     while (1) {
-        // taking care of all "t" from clients
-        while (readyCount != 4) {
-            for (auto &[playerFD, Player]: playersInGameMap) {
-                ssize_t bytesRead = read(playerFD, &readyBuf, 1);
-                if (bytesRead > 0 && readyBuf[0] == 't') {
-                    readyCount++;
-                }
-            }
-        }
         for (auto &[playerFD, Player]: playersInGameMap) {
             if (read(playerFD, &movementBuf, 8) == -1) {
                 if (errno == EWOULDBLOCK) continue;
@@ -113,19 +110,15 @@ float calculatePercentage(const std::vector<std::vector<sf::Color>> &visited, co
 }
 
 void gameLogicThread() {
-    while (activePlayerCount != 4);
-    while (readyCount != 4);
-    if (activePlayerCount == 4 && readyCount == 4) {
-        bool pleaseStart = true;
-        // timer sending
-        //sf::Int32 millisecondsToSend = roundTime.asMilliseconds();
-        for (const auto &player: playersInGameMap) {
-            int playerSocket = player.first;
-//            std::cout << "show me how big are you" << millisecondsToSend << std::endl;
-//            write(playerSocket, &millisecondsToSend, sizeof(millisecondsToSend));
-            write(playerSocket, &pleaseStart, sizeof(pleaseStart));
-            std::cout << pleaseStart << std::endl;
-        }
+    std::unique_lock<std::mutex> lock(mtx3);
+    cvGameLogic2.wait(lock, [] {return activePlayerCount == 4 && readyCount == 4; });
+    std::cout<< "uwbwubuwbuwbuwuw" << std::endl;
+    char ready = 0xf;
+    for (const auto &player: playersInGameMap) {
+        int playerSocket = player.first;
+//          std::cout << "show me how big are you" << millisecondsToSend << std::endl;
+            write(playerSocket, &ready, 1);
+            std::cout << ready << std::endl;
     }
 
     while (readyCount == 4) {
@@ -133,6 +126,7 @@ void gameLogicThread() {
         auto clock = new sf::Clock;
 
         while (activePlayerCount == 4) {
+            lock.unlock();
             sf::Time elapsedTime = clock->getElapsedTime();
             // time start -> sending information to all currently playing clients about time
             sf::Time remainingTime = roundTime - elapsedTime;
@@ -145,6 +139,7 @@ void gameLogicThread() {
                       << std::setfill('0') << std::setw(2) << static_cast<int>(remainingTime.asSeconds()) % 60
                       << std::flush;
 
+            lock.lock();
             if (timeExpired) {
                 break;
             }
@@ -152,8 +147,6 @@ void gameLogicThread() {
         delete clock;
         std::cout << "\nKONIEC CZASU\n";
     }
-    // TODO: funkcja update otrzymująca 'x' i 'y' z kolejki wraz z numerem gracza, traktująca je jako współrzędne VISITED
-
 }
 
 void setReuseAddr(int sock) {
@@ -164,6 +157,9 @@ void setReuseAddr(int sock) {
         printf("Error code: %d\n", errno);
     }
 }
+
+std::mutex mtx;
+std::condition_variable cvStart;
 
 int main(int argc, char **argv) {
     colors.push_back(sf::Color::Red);
@@ -187,9 +183,9 @@ int main(int argc, char **argv) {
 
     //signal(SIGINT, ctrl_c);
 
-    struct sockaddr_in serverAddr;
+    struct sockaddr_in serverAddr{};
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    serverAddr.sin_addr.s_addr = INADDR_ANY;
     serverAddr.sin_port = htons(8080);
 
     int res = bind(serverSocket, (sockaddr *) &serverAddr, sizeof(serverAddr));
@@ -208,27 +204,77 @@ int main(int argc, char **argv) {
     std::thread communicationThread(communicationFunction, serverSocket);
     std::thread gameThread(gameLogicThread);
 
-    while (1) {
-        if (activePlayerCount != 4) {
-            int client = accept(serverSocket, nullptr, nullptr);
-            fcntl(client, F_SETFL, O_NONBLOCK);
-            std::cout << "New connection accepted" << std::endl;
-            activePlayerCount += 1;
-            // TODO: client disconnection == activePlayerCount -=1
-            PlayerInfo newPlayer;
-            // funkcja do iterowania przez graczy nadajaca im konkretny kolor i pozycje na mapie
-            newPlayer.x = beginCords[activePlayerCount - 1].x; // vector starts with 0
-            newPlayer.y = beginCords[activePlayerCount - 1].y; // vector starts with 0
-            newPlayer.intColor = activePlayerCount - 1;
-            playersInGameMap.insert({client, newPlayer});
-            std::cout << "Size of MyStruct: " << sizeof(newPlayer) << " bytes" << std::endl;
-            write(client, &newPlayer, sizeof(newPlayer));
+    while (true) {
+        int client = accept(serverSocket, nullptr, nullptr);
+        int status = fcntl(client, F_SETFL, O_NONBLOCK);
+        if (status == -1) {
+            shutdown(serverSocket, SHUT_RDWR);
+            close(serverSocket);
         }
+        std::cout << "New connection accepted" << std::endl;
+
+        std::unique_lock<std::mutex> lock(mtx);
+
+        activePlayerCount += 1;
+
+        PlayerInfo newPlayer;
+        // funkcja do iterowania przez graczy nadajaca im konkretny kolor i pozycje na mapie
+        newPlayer.x = beginCords[activePlayerCount - 1].x; // vector starts with 0
+        newPlayer.y = beginCords[activePlayerCount - 1].y; // vector starts with 0
+        newPlayer.intColor = activePlayerCount - 1;
+        playersInGameMap.insert({client, newPlayer});
+        std::cout << "Size of MyStruct: " << sizeof(newPlayer) << " bytes" << std::endl;
+        ssize_t bytesSend = write(client, &newPlayer, sizeof(newPlayer));
+        if ( bytesSend == -1){
+            if (errno == EWOULDBLOCK) {
+                bytesSend = 0;
+            } else {
+                throw std::runtime_error("Błąd w 1 kroku wysyłania informacji o nowym graczu");
+            }
+        }
+        while (bytesSend < 12) {
+            ssize_t additionalSend =
+                    write(serverSocket, &newPlayer + bytesSend, sizeof(newPlayer) - bytesSend);
+            if (additionalSend <= 0) {
+                if (errno == EWOULDBLOCK)
+                    continue;
+                throw std::runtime_error("błąd przy wysyłaniu informacji o nowym graczu");
+            }
+        }
+
+        if (activePlayerCount == 4) {
+            // taking care of all "t" from clients
+            while (readyCount != 4) {
+                for (auto &[playerFD, Player]: playersInGameMap) {
+                    ssize_t bytesRead = read(playerFD, &readyBuf, 1);
+                    if (bytesRead == -1) {
+                        if (errno == EWOULDBLOCK) continue;
+                        throw std::runtime_error("pizda");
+                    }
+                    if (bytesRead > 0 && readyBuf[0] == 't') {
+                        readyCount++;
+                        std::cout<<"AAAAAAAAA"<<std::endl;
+                    }
+                }
+            }
+            cvGameLogic.notify_one();
+            cvGameLogic2.notify_one();
+            cvStart.wait(lock, [] {return activePlayerCount < 4; });
+        }
+
+        lock.unlock();
     }
 
 };
 
-void ctrl_c() {
-    // TODO: client closing on ctrl + c
-}
 
+//usunąć game-test z repo - niewazne
+
+//obsluzyc rozlaczenia graczy
+
+// toDisconnect pociagnac do konca
+// TODO: client disconnection == activePlayerCount -=1
+
+// sprawdzic wszystkie writey czy wysylają całą wiadomość
+// ewentualnie kolejka i cooldown na ruchu kazdego gracza
+// dlaczego readUpdate nie dziala(?)

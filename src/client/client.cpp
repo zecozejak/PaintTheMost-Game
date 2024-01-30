@@ -36,10 +36,12 @@ std::vector<std::vector<sf::Color> > visited(gridWidth / gridSize,
                                              std::vector<sf::Color>(gridHeight / gridSize, sf::Color::White));
 std::vector<sf::Color> colors;
 
+#pragma pack(push, 1) // Set packing to 1 byte
 struct PlayerInfo {
     float x, y;  // Player position
     int intColor;
 };
+#pragma pack(pop) // Restore default packing
 
 struct ColorInfo {
     int r;
@@ -48,36 +50,43 @@ struct ColorInfo {
 };
 
 
-int receiveFirstTime(int fd) {
-    sf::Int32 receivedMilliseconds;
-    ssize_t bytesRead =
-            read(fd, &receivedMilliseconds, sizeof(receivedMilliseconds));
-    std::cout << bytesRead << std::endl;
-    if (bytesRead == -1) {
-        throw std::runtime_error("halo czy mnie slychac?");
-    }
-
-    while (bytesRead < 4) {
-        std::cout << "dotarłem tam gdzie powinienem" << std::endl;
-        ssize_t additionalRead = read(fd, &receivedMilliseconds + bytesRead,
-                                      sizeof(receivedMilliseconds));
-        if (additionalRead <= 0) {
-            if (errno == EWOULDBLOCK)
-                continue;
-            throw std::runtime_error("no i mamy problem");
-        }
-
-        bytesRead += additionalRead;
-    }
-
-    timeExpired = false;
-    return int(receivedMilliseconds);
-}
+//int receiveFirstTime(int fd) {
+//    sf::Int32 receivedMilliseconds;
+//    ssize_t bytesRead =
+//            read(fd, &receivedMilliseconds, sizeof(receivedMilliseconds));
+//    std::cout << bytesRead << std::endl;
+//    if (bytesRead == -1) {
+//        throw std::runtime_error("halo czy mnie slychac?");
+//    }
+//
+//    while (bytesRead < 4) {
+//        std::cout << "dotarłem tam gdzie powinienem" << std::endl;
+//        ssize_t additionalRead = read(fd, &receivedMilliseconds + bytesRead,
+//                                      sizeof(receivedMilliseconds));
+//        if (additionalRead <= 0) {
+//            if (errno == EWOULDBLOCK)
+//                continue;
+//            throw std::runtime_error("no i mamy problem");
+//        }
+//
+//        bytesRead += additionalRead;
+//    }
+//
+//    timeExpired = false;
+//    return int(receivedMilliseconds);
+//}
 
 // std::optional<PlayerInfo> readPlayerUpdate(int socketFD) {
 PlayerInfo readPlayerUpdate(int socketFD) {
     PlayerInfo updateInfo{};
     ssize_t bytesRead = read(socketFD, &updateInfo, sizeof(updateInfo));
+    if (bytesRead == -1){
+        if (errno == EWOULDBLOCK) {
+            bytesRead = 0;
+        } else {
+            throw std::runtime_error("MAMY KURWA PROBLEM");
+        }
+    }
     while (bytesRead < 12) {
         ssize_t additionalRead =
                 read(socketFD, &updateInfo + bytesRead, sizeof(updateInfo));
@@ -89,17 +98,9 @@ PlayerInfo readPlayerUpdate(int socketFD) {
 
         bytesRead += additionalRead;
     }
-//    if (bytesRead > 12) {
-//        throw std::runtime_error("za duzo");
-//    }
-    //    printf("\n%f\n", updateInfo.x);
-    //    printf("%f\n", updateInfo.y);
-    //    printf("%d", updateInfo.color.b);
+
     std::cout << sizeof(updateInfo) << std::endl;
     std::cout << bytesRead << std::endl;
-    if (bytesRead == -1) {
-        perror("Error reading player update");
-    }
 
     return updateInfo;
 }
@@ -132,7 +133,7 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    struct sockaddr_in serverAddr;
+    struct sockaddr_in serverAddr{};
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
     serverAddr.sin_port = htons(8080);
@@ -149,6 +150,11 @@ int main(int argc, char **argv) {
     std::cout << "Connected to the server." << std::endl;
 
     int status = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    if (status == -1) {
+        shutdown(fd,SHUT_RDWR);
+        close(fd);
+    }
+
     std::cout << "Connected to the server." << std::endl;
     PlayerInfo firstInfo = readPlayerUpdate(fd);
 
@@ -169,12 +175,19 @@ int main(int argc, char **argv) {
     timeExpired = false;
     std::cout << "czy my tu w ogole dochodzimy?" << std::endl;
     //std::thread receiveThread(receiveTimeState, fd);
-    char rBuff[1];
-    ssize_t bytesrRead = read(fd, rBuff, sizeof(rBuff));
+    char rBuff;
     while (!pleaseStart) {
         sleep(1);
         std::cout << "czekam" << std::endl;
-
+        if(read(fd, &rBuff, 1) == -1) {
+            if (errno == EWOULDBLOCK)
+                continue;
+            throw std::runtime_error("mamy problem w prosze startowac panie kapitanie");
+        }
+        if (rBuff == 0xf) {
+            pleaseStart = true;
+        }
+        std::cout << rBuff << std::endl;
     }
     // Who let the clock out?
     sf::Clock clock;
@@ -225,19 +238,25 @@ int main(int argc, char **argv) {
             }
 
             // sending position to server
-            float valueX = (player1.getPosition().x - gridX) / gridSize;
-            float valueY = (player1.getPosition().y - gridY) / gridSize;
-            sendPlayerMovement(fd, valueX,
-                               valueY);// to chyba powinno dzialac (nieprzetestowane bo nie potrafie zrobic zeby serwer wyslal dobre informacje do clienta zeby ten pomalowal sobie vector mapygry
-            std::cout << "jebac mnie serio" << std::endl;
+            if (shouldMove) {
+                float valueX = (player1.getPosition().x - gridX) / gridSize;
+                float valueY = (player1.getPosition().y - gridY) / gridSize;
+                sendPlayerMovement(fd, valueX,
+                                   valueY);// to chyba powinno dzialac (nieprzetestowane bo nie potrafie zrobic zeby serwer wyslal dobre informacje do clienta zeby ten pomalowal sobie vector mapygry
+                std::cout << "jebac mnie serio" << std::endl;
+            }
 //            if(firstSendImportant == 0){
 //                float valueX = (player1.getPosition().x - gridX) / gridSize;
 //                float valueY = (player1.getPosition().y - gridY) / gridSize;
 //                sendPlayerMovement(fd, valueX,valueY);
 //                firstSendImportant = 1;
 //            }
+            std::cout << "przed updatem" << std::endl;
             PlayerInfo updatePlayer = readPlayerUpdate(fd);
+            std::cout << "w trakcie updateu" << std::endl;
             visited[(updatePlayer.x)][(updatePlayer.y)] = colors[updatePlayer.intColor];
+            std::cout << "po update" << std::endl;
+
 
 //            std::optional<PlayerInfo> updatePlayer = readPlayerUpdate(fd);// to rozpierdala gierke razem z czescia na serwerze
 //            if(updatePlayer.has_value()) {
