@@ -40,7 +40,7 @@ const float squareSize = 10.0f;
 const float outlineThickness = 1.0f;
 sf::Time remainingTime; // czas od serwera
 char ready;
-const sf::Time roundTime = sf::seconds(15.0f); // czas gry
+const sf::Time roundTime = sf::seconds(90.0f); // czas gry
 
 // ustawienia biala plansza co bedzie zamalowywana
 const int gridWidth = windowWidth / 2;

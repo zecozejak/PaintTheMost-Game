@@ -17,7 +17,7 @@
 #include <unordered_map>
 #include <vector>
 
-const sf::Time roundTime = sf::seconds(15.0f); // czas gry
+const sf::Time roundTime = sf::seconds(90.0f); // czas gry
 
 int activePlayerCount = 0;
 const int windowWidth = 800;
