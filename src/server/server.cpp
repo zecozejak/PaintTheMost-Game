@@ -1,12 +1,13 @@
 #include "../shared/communication.h"
 #include <SFML/Graphics.hpp>
+#include <chrono>
 #include <condition_variable>
 #include <cstring>
 #include <errno.h>
 #include <iomanip>
 #include <iostream>
-#include <mutex>
 #include <netinet/in.h>
+#include <stdexcept>
 #include <stdio.h>
 #include <sys/fcntl.h>
 #include <sys/socket.h>
@@ -16,7 +17,7 @@
 #include <unordered_map>
 #include <vector>
 
-const sf::Time roundTime = sf::seconds(90.0f); // czas gry
+const sf::Time roundTime = sf::seconds(15.0f); // czas gry
 
 int activePlayerCount = 0;
 const int windowWidth = 800;
@@ -66,32 +67,42 @@ void communicationFunction(int serverSocket) {
     char movementBuf[8];
     while (1) {
         for (auto &[playerFD, Player] : playersInGameMap) {
-            if (read(playerFD, &movementBuf, 8) == -1) {
-                if (errno == EWOULDBLOCK)
-                    continue;
+            int b = receive(playerFD, movementBuf);
+            if (b == 0)
+                continue;
+            if (b == -1) {
                 toDisconnect.push_back(playerFD);
-            }
-            auto *stateInfo = reinterpret_cast<PlayerInfo *>(movementBuf);
-
-            if (stateInfo->x == Player.x && stateInfo->y == Player.y) {
                 continue;
             }
-            std::cout << "jestem poza kontrolą" << std::endl;
+
+            PlayerInfo stateInfo{};
+            memcpy(&stateInfo.x, movementBuf, sizeof(float));
+            memcpy(&stateInfo.y, movementBuf + sizeof(float), sizeof(float));
+
+            if (stateInfo.x == Player.x && stateInfo.y == Player.y) {
+                continue;
+            }
+//            std::cout << "jestem poza kontrolą" << std::endl;
             // updating position of every player
-            if (stateInfo->x >= 0 && stateInfo->x < visited.size() &&
-                stateInfo->y >= 0 && stateInfo->y < visited[0].size()) {
-                Player.x = stateInfo->x;
-                Player.y = stateInfo->y;
+            if (stateInfo.x >= 0 && stateInfo.x < visited.size() &&
+                stateInfo.y >= 0 && stateInfo.y < visited[0].size()) {
+                Player.x = stateInfo.x;
+                Player.y = stateInfo.y;
                 visited[Player.x][Player.y] = colors[Player.intColor];
             }
 
             for (const auto &player : playersInGameMap) {
                 int playerSocket = player.first;
+                PlayerInfo updateInfo{};
+                updateInfo.x = Player.x;
+                updateInfo.y = Player.y;
+                updateInfo.intColor = Player.intColor;
+
                 char updateBuf[12];
-                auto *updateInfo = reinterpret_cast<PlayerInfo *>(updateBuf);
-                updateInfo->x = Player.x;
-                updateInfo->y = Player.y;
-                updateInfo->intColor = Player.intColor;
+                memcpy(updateBuf, &updateInfo.x, sizeof(float));
+                memcpy(updateBuf + sizeof(float), &updateInfo.y, sizeof(float));
+                memcpy(updateBuf + 2 * sizeof(float), &updateInfo.intColor,
+                       sizeof(int));
 
                 sendWithLength(playerSocket, updateBuf, 12);
             }
@@ -99,27 +110,10 @@ void communicationFunction(int serverSocket) {
     }
 }
 
-float calculatePercentage(const std::vector<std::vector<sf::Color>> &visited,
-                          const sf::Color &color) {
-    int totalGrids = 0;
-    int coloredGrids = 0;
-
-    for (int i = 0; i < visited.size(); ++i) {
-        for (int j = 0; j < visited[i].size(); ++j) {
-            if (visited[i][j] == color) {
-                coloredGrids++;
-            }
-            totalGrids++;
-        }
-    }
-    return static_cast<float>(coloredGrids) / totalGrids * 100.0f;
-}
-
 void gameLogicThread() {
     std::unique_lock<std::mutex> lock(mtx3);
     cvGameLogic2.wait(lock,
                       [] { return activePlayerCount == 4 && readyCount == 4; });
-    std::cout << "uwbwubuwbuwbuwuw" << std::endl;
     char ready = 0xf;
     for (const auto &player : playersInGameMap) {
         int playerSocket = player.first;
@@ -137,21 +131,31 @@ void gameLogicThread() {
             sf::Time remainingTime = roundTime - elapsedTime;
             if (remainingTime <= sf::Time::Zero) {
                 timeExpired = true;
-                remainingTime = sf::Time::Zero; // unikanie wartosci ujemnych
+                remainingTime = sf::Time::Zero;
             }
             std::cout << "\rPozostaly czas: " << std::setfill('0') << std::setw(2)
                       << static_cast<int>(remainingTime.asSeconds()) / 60 << ":"
                       << std::setfill('0') << std::setw(2)
-                      << static_cast<int>(remainingTime.asSeconds()) % 60
-                      << std::flush;
+                      << static_cast<int>(remainingTime.asSeconds()) % 60 << std::dec
+                      << std::endl;
 
             lock.lock();
             if (timeExpired) {
                 break;
             }
         }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+
         delete clock;
-        std::cout << "\nKONIEC CZASU\n";
+        std::cout << "\nKONIEC CZASU\n" << std::endl;
+
+        for (auto &[playerFD, Player] : playersInGameMap) {
+            shutdown(playerFD, SHUT_RDWR);
+            close(playerFD);
+        }
+
+        return;
     }
 }
 
@@ -226,6 +230,8 @@ int main(int argc, char **argv) {
         activePlayerCount += 1;
 
         PlayerInfo newPlayer;
+        // funkcja do iterowania przez graczy nadajaca im konkretny kolor i pozycje
+        // na mapie
         newPlayer.x = beginCords[activePlayerCount - 1].x; // vector starts with 0
         newPlayer.y = beginCords[activePlayerCount - 1].y; // vector starts with 0
         newPlayer.intColor = activePlayerCount - 1;
@@ -244,7 +250,7 @@ int main(int argc, char **argv) {
                     if (bytesRead == -1) {
                         if (errno == EWOULDBLOCK)
                             continue;
-                        throw std::runtime_error("lllll");
+                        throw std::runtime_error("run");
                     }
                     if (bytesRead > 0 && readyBuf[0] == 't') {
                         readyCount++;
@@ -260,7 +266,3 @@ int main(int argc, char **argv) {
         lock.unlock();
     }
 };
-
-// obsluzyc rozlaczenia graczy
-
-// toDisconnect pociagnac do konca

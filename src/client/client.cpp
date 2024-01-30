@@ -17,6 +17,22 @@
 #include <unistd.h>
 #include <vector>
 
+float calculatePercentage(const std::vector<std::vector<sf::Color>> &visited,
+                          const sf::Color &color) {
+    int totalGrids = 0;
+    int coloredGrids = 0;
+
+    for (int i = 0; i < visited.size(); ++i) {
+        for (int j = 0; j < visited[i].size(); ++j) {
+            if (visited[i][j] == color) {
+                coloredGrids++;
+            }
+            totalGrids++;
+        }
+    }
+    return static_cast<float>(coloredGrids) / totalGrids * 100.0f;
+}
+
 const int gridSize = 10; // rozmiar siatki
 const int windowWidth = 800;
 const int windowHeight = 600;
@@ -24,7 +40,7 @@ const float squareSize = 10.0f;
 const float outlineThickness = 1.0f;
 sf::Time remainingTime; // czas od serwera
 char ready;
-const sf::Time roundTime = sf::seconds(90.0f); // czas gry
+const sf::Time roundTime = sf::seconds(15.0f); // czas gry
 
 // ustawienia biala plansza co bedzie zamalowywana
 const int gridWidth = windowWidth / 2;
@@ -110,8 +126,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    std::cout << "Connected to the server." << std::endl;
-
     int status = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     if (status == -1) {
         shutdown(fd, SHUT_RDWR);
@@ -137,7 +151,6 @@ int main(int argc, char **argv) {
     sendPlayerReadiness(fd);
     sf::Time receivedTime = roundTime; // sf::milliseconds(receiveFirstTime(fd));
     timeExpired = false;
-    std::cout << "czy my tu w ogole dochodzimy?" << std::endl;
     char rBuff;
     while (!pleaseStart) {
         sleep(1);
@@ -169,6 +182,8 @@ int main(int argc, char **argv) {
             bool shouldMove = false;
 
             sf::Time elapsedTime = clock.getElapsedTime();
+            // time start -> sending information to all currently playing clients
+            // about time
             remainingTime = receivedTime - elapsedTime;
             if (remainingTime <= sf::Time::Zero) {
                 timeExpired = true;
@@ -178,7 +193,7 @@ int main(int argc, char **argv) {
                       << static_cast<int>(remainingTime.asSeconds()) / 60 << ":"
                       << std::setfill('0') << std::setw(2)
                       << static_cast<int>(remainingTime.asSeconds()) % 60
-                      << std::flush;
+                      << std::endl;
 
             // movement keys
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) &&
@@ -206,6 +221,10 @@ int main(int argc, char **argv) {
             if (shouldMove) {
                 float valueX = (player1.getPosition().x - gridX) / gridSize;
                 float valueY = (player1.getPosition().y - gridY) / gridSize;
+                std::cout << "WE ARRE MOVING AT MACH 3" << std::endl;
+                std::cout << valueX << std::endl;
+                std::cout << valueY << std::endl;
+                std::cout << "Ending" << std::endl;
                 sendPlayerMovement(
                         fd, valueX,
                         valueY);
@@ -224,7 +243,29 @@ int main(int argc, char **argv) {
                 visited[std::floor(updatePlayer->x)][std::floor(updatePlayer->y)] =
                         colors[updatePlayer->intColor];
             }
+        } else {
+            window.close();
+            std::cout << "THE GAME HAS ENDED" << std::endl;
+            std::cout << "Total percentage" << std::endl;
+            for (const auto color : colors) {
+                float percentage = calculatePercentage(visited, color);
+                std::cout << "The percentage for color: ";
+                if (color == sf::Color::Red) {
+                    std::cout << "red: ";
+                } else if (color == sf::Color::Blue) {
+                    std::cout << "blue: ";
+                } else if (color == sf::Color::Green) {
+                    std::cout << "green: ";
+                } else {
+                    std::cout << "yellow: ";
+                }
+
+                std::cout << percentage << std::endl;
+            }
+
+            continue;
         }
+
         window.clear();
 
         // table drawing
@@ -241,6 +282,7 @@ int main(int argc, char **argv) {
         window.display();
     }
 
+    shutdown(fd, SHUT_RDWR);
     close(fd);
     return 0;
 }
