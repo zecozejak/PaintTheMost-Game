@@ -114,7 +114,7 @@ int main(int argc, char **argv) {
 
     struct sockaddr_in serverAddr {};
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    serverAddr.sin_addr.s_addr = inet_addr(argv[1]);
     serverAddr.sin_port = htons(8080);
 
     if (connect(fd, (sockaddr *)&serverAddr, sizeof(serverAddr)) == -1) {
